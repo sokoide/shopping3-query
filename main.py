@@ -26,20 +26,14 @@ MCP_SERVER_PATH = "mcp-grafana"
 MCP_SERVER_ARGS = [""]
 
 
+server_params = StdioServerParameters(
+    command=MCP_SERVER_PATH,
+    args=MCP_SERVER_ARGS,
+    env=os.environ,
+)
+
 async def test_mcp_connection():
     """Test MCP connection and list available tools"""
-    env = {
-        **os.environ,
-        "GRAFANA_URL": "https://grafana.sokoide.f5.si",
-        "GRAFANA_API_KEY": os.getenv("GRAFANA_API_KEY", "")
-    }
-
-    server_params = StdioServerParameters(
-        command=MCP_SERVER_PATH,
-        args=MCP_SERVER_ARGS,
-        env=env
-    )
-
     try:
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
@@ -53,19 +47,6 @@ async def test_mcp_connection():
 
 async def query_logs_with_mcp(query_text):
     """Query Loki logs using Grafana MCP"""
-    # Set environment variables for MCP server
-    env = {
-        **os.environ,
-        "GRAFANA_URL": "https://grafana.sokoide.f5.si",
-        "GRAFANA_API_KEY": os.getenv("GRAFANA_API_KEY", "")
-    }
-
-    server_params = StdioServerParameters(
-        command=MCP_SERVER_PATH,
-        args=MCP_SERVER_ARGS,
-        env=env
-    )
-
     # Generate LogQL from natural language using AI first
     prompt_logql = f"""
 You are an expert in querying Loki logs. Given the following user question:
@@ -111,17 +92,14 @@ Respond with only the LogQL query (no comments or explanation).
                         loki_tools.append(tool.name)
                         logging.info(f"{tool.name} tool details: {tool}")
                         if hasattr(tool, 'inputSchema'):
-                            logging.info(f"{tool.name} input schema: {
-                                         tool.inputSchema}")
+                            logging.info(f"{tool.name} input schema: {tool.inputSchema}")
                         if hasattr(tool, 'description'):
-                            logging.info(f"{tool.name} description: {
-                                         tool.description}")
+                            logging.info(f"{tool.name} description: {tool.description}")
 
                 logging.info(f"All Loki-related tools found: {loki_tools}")
 
                 if "query_loki_logs" not in available_tools:
-                    raise ValueError(f"query_loki_logs tool not available. Available tools: {
-                                     available_tools}")
+                    raise ValueError(f"query_loki_logs tool not available. Available tools: {available_tools}")
 
                 # First, let's try to list datasources to understand what's available
                 loki_datasource_uid = None
@@ -134,10 +112,8 @@ Respond with only the LogQL query (no comments or explanation).
 
                         # More detailed parsing of datasources
                         if hasattr(datasources, 'content'):
-                            logging.info(f"Datasources content type: {
-                                         type(datasources.content)}")
-                            logging.info(f"Datasources content: {
-                                         datasources.content}")
+                            logging.info(f"Datasources content type: {type(datasources.content)}")
+                            logging.info(f"Datasources content: {datasources.content}")
 
                             content = datasources.content
                             if isinstance(content, list):
@@ -151,8 +127,7 @@ Respond with only the LogQL query (no comments or explanation).
                                             import json
                                             datasources_list = json.loads(
                                                 json_text)
-                                            logging.info(f"Parsed datasources JSON: {
-                                                         datasources_list}")
+                                            logging.info(f"Parsed datasources JSON: {datasources_list}")
 
                                             # Find the datasource with type "loki"
                                             for ds in datasources_list:
@@ -189,16 +164,13 @@ Respond with only the LogQL query (no comments or explanation).
                 except Exception as ds_error:
                     logging.warning(f"Could not list datasources: {ds_error}")
 
-                logging.info("*****")
-
                 # Use MCP to query Loki logs
                 # tokyo_tz = timezone('Asia/Tokyo')
                 # end = datetime.now(tokyo_tz)
                 end = datetime.now(timezone.utc)
                 start = end - timedelta(hours=12)
 
-                logging.info(f"Querying logs from {
-                             start.isoformat()} to {end.isoformat()}")
+                logging.info(f"* Querying logs from {start.isoformat()} to {end.isoformat()}")
 
                 # Build list of datasource identifiers to try
                 # Since UID seems to have a bug, prioritize names
@@ -230,18 +202,15 @@ Respond with only the LogQL query (no comments or explanation).
                             **base_params,
                             "datasourceUid": loki_datasource_uid
                         }
-                        logging.info(f"Trying datasourceUid: {
-                                     loki_datasource_uid} with params: {params}")
+                        logging.info(f"Trying datasourceUid: {loki_datasource_uid} with params: {params}")
                         try:
                             result = await session.call_tool("query_loki_logs", params)
-                            logging.info(f"SUCCESS with datasourceUid: {
-                                         loki_datasource_uid}")
+                            logging.info(f"SUCCESS with datasourceUid: {loki_datasource_uid}")
                             logging.info(f"MCP result type: {type(result)}")
                             logging.info(f"MCP result: {result}")
                             return logql_query, result.content
                         except Exception as uid_error:
-                            logging.error(f"Failed with datasourceUid '{
-                                          loki_datasource_uid}': {uid_error}")
+                            logging.error(f"Failed with datasourceUid '{loki_datasource_uid}': {uid_error}")
                     else:
                         logging.warning(
                             "Loki datasource UID not found, cannot query Loki logs using UID.")
@@ -259,15 +228,13 @@ Respond with only the LogQL query (no comments or explanation).
                 return logql_query, result.content
 
     except ExceptionGroup as eg:
-        logging.error(f"MCP ExceptionGroup with {
-                      len(eg.exceptions)} exceptions:")
+        logging.error(f"MCP ExceptionGroup with {len(eg.exceptions)} exceptions:")
         for i, exc in enumerate(eg.exceptions):
             logging.error(f"  Exception {i+1}: {type(exc).__name__}: {exc}")
             # If it's another ExceptionGroup, unwrap it further
             if isinstance(exc, ExceptionGroup):
                 for j, inner_exc in enumerate(exc.exceptions):
-                    logging.error(f"    Inner Exception {
-                                  j+1}: {type(inner_exc).__name__}: {inner_exc}")
+                    logging.error(f"    Inner Exception {j+1}: {type(inner_exc).__name__}: {inner_exc}")
         # Return the query and empty result so the app doesn't crash
         return logql_query, []
     except Exception as e:
@@ -289,8 +256,7 @@ if st.button("Test MCP Connection"):
     try:
         available_tools = asyncio.run(test_mcp_connection())
         if available_tools:
-            st.success(f"✅ MCP Connection successful! Available tools: {
-                       ', '.join(available_tools)}")
+            st.success(f"✅ MCP Connection successful! Available tools: {', '.join(available_tools)}")
         else:
             st.error("❌ MCP Connection failed or no tools available")
     except Exception as e:
